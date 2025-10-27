@@ -11,8 +11,10 @@
 #define SOURCE_PLUS_DESTINATION_SIZE 4
 #define CRC_SIZE 2
 #define HEADER_SIZE LENGTH_SIZE+HEC_SIZE+SOURCE_PLUS_DESTINATION_SIZE+CRC_SIZE
-
-typedef struct blabla_decoder blabla_decoder;
+#define BLABLA_DECODER_SIZE 1560
+typedef struct{
+uint8_t private_decoder [BLABLA_DECODER_SIZE];
+}blabla_decoder;
 typedef struct __attribute__((packed))
 {
     uint16_t length;
@@ -25,3 +27,5 @@ typedef struct __attribute__((packed))
 typedef void (*Message_decoded_callback)(Decoded_message *decoded_message);
 size_t blabla_decode_write(blabla_decoder *decoder, uint8_t *data, size_t size);
 void blabla_init(blabla_decoder *decoder);
+void set_decoded_msg_callback(blabla_decoder *decoder, void (*callback)(Decoded_message *));
+
