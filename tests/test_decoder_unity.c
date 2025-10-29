@@ -179,5 +179,8 @@ int main(void)
     RUN_TEST(test_m_single_packet_with_fragmented_crc); // 1 msg
     RUN_TEST(test_n_fragmentation_in_length_field); // 1 msg
     // RUN_TEST(test_k_max_payload);
+
+        RUN_TEST(test_i_data_null_or_size0);         // 0 msgs
+
     return UNITY_END();
 }
