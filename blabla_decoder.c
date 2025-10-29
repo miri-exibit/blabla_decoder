@@ -30,8 +30,15 @@ typedef struct blabla_decoder_private
 } blabla_decoder_private;
 void set_decoded_msg_callback(blabla_decoder *decoder, Message_decoded_callback message_decoded_callback)
 {
-    blabla_decoder_private *p_p_decoder = AS_PRIVATE(decoder);
-    p_p_decoder->message_decoded_callback = message_decoded_callback;
+    
+    blabla_decoder_private *p_decoder = AS_PRIVATE(decoder);
+    if (p_decoder == NULL )
+    {
+        errno = EINVAL; /* Invalid argument */
+        perror("p_decoder/data/size is NULL");
+        return ;
+    }
+    p_decoder->message_decoded_callback = message_decoded_callback;
 }
 size_t blabla_decode_write(blabla_decoder *decoder, uint8_t *data, size_t size)
 {

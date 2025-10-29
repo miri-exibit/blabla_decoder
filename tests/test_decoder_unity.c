@@ -1,0 +1,183 @@
+#include "../Unity/src/unity.h"
+#include "../blabla_decoder.h"
+#include <errno.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdio.h>
+
+static blabla_decoder decoder;
+static int callback_called = 0;
+
+void fake_callback(Decoded_message *msg)
+{
+    callback_called++;
+    printf("message decoded successfully\n");
+}
+
+void setUp(void)
+{
+    blabla_init(&decoder);
+    set_decoded_msg_callback(&decoder, fake_callback);
+    callback_called = 0;
+}
+
+void tearDown(void)
+{
+}
+
+void test_a_fragmented_message(void)
+{
+    uint8_t part1[] = {0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15};
+    uint8_t part2[] = {0x16, 0x17, 0x18, 0x19, 0x58, 0xBE};
+
+    size_t r1 = blabla_decode_write(&decoder, part1, sizeof(part1));
+    TEST_ASSERT_EQUAL(r1, sizeof(part1));
+    TEST_ASSERT_EQUAL(callback_called, 0);
+
+    size_t r2 = blabla_decode_write(&decoder, part2, sizeof(part2));
+    TEST_ASSERT_EQUAL(r2, sizeof(part2));
+    TEST_ASSERT_EQUAL(callback_called, 1);
+}
+
+void test_b_two_overlapping_packets(void)
+{
+    uint8_t data1[] = {0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15};
+    uint8_t data2[] = {0x16, 0x17, 0x18, 0x19, 0x58, 0xBE, 0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15};
+    uint8_t data3[] = {0x16, 0x17, 0x18, 0x19, 0x58, 0xBE};
+
+    blabla_decode_write(&decoder, data1, sizeof(data1));
+    blabla_decode_write(&decoder, data2, sizeof(data2));
+    blabla_decode_write(&decoder, data3, sizeof(data3));
+
+    TEST_ASSERT_EQUAL(callback_called, 2);
+}
+
+void test_c_noise_between_packets(void)
+{
+    uint8_t data1[] = {0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15};
+    uint8_t data2[] = {0x16, 0x17, 0x18, 0x19, 0x58, 0xBE, 0xBA, 0xBA, 0xBA, 0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15};
+    uint8_t data3[] = {0x16, 0x17, 0x18, 0x19, 0x58, 0xBE};
+
+    blabla_decode_write(&decoder, data1, sizeof(data1));
+    blabla_decode_write(&decoder, data2, sizeof(data2));
+    blabla_decode_write(&decoder, data3, sizeof(data3));
+
+    TEST_ASSERT_EQUAL(callback_called, 2);
+}
+
+void test_d_single_packet(void)
+{
+    uint8_t data[] = {0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x58, 0xBE};
+    size_t res = blabla_decode_write(&decoder, data, sizeof(data));
+    TEST_ASSERT_EQUAL(res, sizeof(data));
+    TEST_ASSERT_EQUAL(callback_called, 1);
+}
+
+void test_e_noise_and_multiple_packets(void)
+{
+    uint8_t p1[] = {0xAA, 0xAA, 0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x58, 0xBE, 0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x58, 0xBE, 0x66, 0xBA, 0xBA, 0xAA, 0x00, 0x0A, 0x00};
+    uint8_t p2[] = {0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x58, 0xBE};
+    blabla_decode_write(&decoder, p1, sizeof(p1));
+    blabla_decode_write(&decoder, p2, sizeof(p2));
+    TEST_ASSERT_EQUAL(callback_called, 3);
+}
+
+void test_f_hec_error(void)
+{
+    uint8_t bad[] = {0xBA, 0xAA, 0x00, 0x01, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x58, 0xBE};
+    size_t res = blabla_decode_write(&decoder, bad, sizeof(bad));
+    TEST_ASSERT_EQUAL(res, (size_t)-1);
+    TEST_ASSERT_EQUAL(errno, EIO);
+}
+
+void test_g_crc_error(void)
+{
+    uint8_t bad[] = {0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x18, 0x18, 0x19, 0x58, 0xBE};
+    size_t res = blabla_decode_write(&decoder, bad, sizeof(bad));
+    TEST_ASSERT_EQUAL(res, (size_t)-1);
+    TEST_ASSERT_EQUAL(errno, EIO);
+}
+
+void test_h_decoder_null(void)
+{
+    uint8_t data[] = {0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x58, 0xBE};
+    size_t res = blabla_decode_write(NULL, data, sizeof(data));
+    TEST_ASSERT_EQUAL(res, (size_t)-1);
+    TEST_ASSERT_EQUAL(errno, EINVAL);
+}
+
+void test_i_data_null_or_size0(void)
+{
+    uint8_t d[] = {0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x58, 0xBE};
+    size_t res1 = blabla_decode_write(&decoder, NULL, sizeof(d));
+    TEST_ASSERT_EQUAL(res1, (size_t)-1);
+    TEST_ASSERT_EQUAL(errno, EINVAL);
+
+    size_t res2 = blabla_decode_write(&decoder, d, 0);
+    TEST_ASSERT_EQUAL(res2, (size_t)-1);
+    TEST_ASSERT_EQUAL(errno, EINVAL);
+}
+
+void test_j_length_zero(void)
+{ // TODO:fix crc value
+    uint8_t pkt[] = {0xBA, 0xAA, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0xFF, 0xFF};
+    size_t processed = blabla_decode_write(&decoder, pkt, sizeof(pkt));
+    TEST_ASSERT_EQUAL(processed, sizeof(pkt));
+    TEST_ASSERT_EQUAL(callback_called, 1);
+}
+
+void test_k_max_payload(void)
+{
+    uint8_t pkt[1510] = {/* הודעה עם Payload 1500 */};
+    blabla_decode_write(&decoder, pkt, sizeof(pkt));
+    TEST_ASSERT_EQUAL(callback_called, 1);
+}
+
+void test_l_state_reset_after_error(void)
+{
+    uint8_t bad[] = {0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x18, 0x18, 0x19, 0x58, 0xBE};
+    uint8_t good[] = {0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x58, 0xBE};
+    blabla_decode_write(&decoder, bad, sizeof(bad));
+    TEST_ASSERT_EQUAL(errno, EIO);
+    blabla_decode_write(&decoder, good, sizeof(good));
+    TEST_ASSERT_EQUAL(callback_called, 1);
+}
+void test_m_single_packet_with_fragmented_crc(void)
+{
+    uint8_t data1[] = {0xBA, 0xAA, 0x00, 0x0A, 0x00, 0x01, 0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x58};
+    uint8_t data2[] = {0xBE};
+    blabla_decode_write(&decoder, data1, sizeof(data1));
+    blabla_decode_write(&decoder, data2, sizeof(data2));
+    TEST_ASSERT_EQUAL(callback_called, 1);
+}void test_n_fragmentation_in_length_field(void) {
+    uint8_t part1[] = {0xBA, 0xAA, 0x00};  
+    uint8_t part2[]={ 0x0A,0x00, 0x01,0x02, 0x03, 0x04, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19,  0x58, 0xBE};
+    size_t r1 = blabla_decode_write(&decoder, part1, sizeof(part1));
+    TEST_ASSERT_EQUAL(r1, sizeof(part1));
+    size_t r2 = blabla_decode_write(&decoder, part2, sizeof(part2));
+    TEST_ASSERT_EQUAL(r2, sizeof(part2));
+    TEST_ASSERT_EQUAL(callback_called, 1);
+}
+
+
+
+
+int main(void)
+{
+    UNITY_BEGIN();
+    RUN_TEST(test_a_fragmented_message);         // 1 msg
+    RUN_TEST(test_b_two_overlapping_packets);    // 2msgs
+    RUN_TEST(test_c_noise_between_packets);      // 2 msgs
+    RUN_TEST(test_d_single_packet);              // 1 msg
+    RUN_TEST(test_e_noise_and_multiple_packets); // 3 msgs
+    RUN_TEST(test_f_hec_error);                  // 0 msgs
+    RUN_TEST(test_g_crc_error);                  // 0 msgs
+    RUN_TEST(test_h_decoder_null);               // 0 msgs
+    RUN_TEST(test_i_data_null_or_size0);         // 0 msgs
+    RUN_TEST(test_j_length_zero);                // 1 msg
+    RUN_TEST(test_l_state_reset_after_error); // 1 msg
+    RUN_TEST(test_m_single_packet_with_fragmented_crc); // 1 msg
+    RUN_TEST(test_n_fragmentation_in_length_field); // 1 msg
+    // RUN_TEST(test_k_max_payload);
+    return UNITY_END();
+}

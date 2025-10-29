@@ -3,7 +3,6 @@
 #include <assert.h>
 #include "../blabla_decoder.h"
 
-
 void test_callback(Decoded_message *msg)
 {
     printf("message decoded successfully\n");
